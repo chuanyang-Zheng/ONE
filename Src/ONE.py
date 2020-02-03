@@ -12,7 +12,7 @@ import gc
 
 gc.enable()
 
-
+#get the data path. After the two lines, mainpath=./Data
 mainpath = os.path.dirname(os.path.realpath(sys.argv[0]))
 mainpath = mainpath + '/Data'
 
@@ -41,13 +41,18 @@ def calc_lossValues(A, C, G, H, U, V, W, outl1, outl2, outl3):
 # NOTE : A node is an outlier ie(the outlier we seeded) when permutation[node_index in struct] > 3312 for citeseer
 # NOTE : A node is an outlier ie(the outlier we seeded) when permutation[node_index in struct] > 877 for citeseer
 
-
+#dataset name
 DSNames = ['citeseer']
 
 for datasetname in DSNames:
-    
+
+    #mainpath/datasetname/_results/citeseer/
+    #We May Better Change it to mainpath/datasetname/_results/datasetname/
+    #Or Just
+    #mainpath/datasetname/_results/
     result_dir_original = mainpath + '/' + datasetname + '_results/' + 'citeseer/'
-    
+
+    #If not exists the directory, create 1-6
     if not os.path.exists(result_dir_original):
         os.makedirs(result_dir_original)
         os.makedirs(result_dir_original + "k=2")
@@ -55,49 +60,81 @@ for datasetname in DSNames:
         os.makedirs(result_dir_original + "k=4")
         os.makedirs(result_dir_original + "k=5")
         os.makedirs(result_dir_original + "k=6")
-        
+
+    #Ask us to input "result_dir_original" to check whether directory name is correct
     proceed = input("check ur result dir" + result_dir_original)
     assert(proceed == 'y')
-    
+
+    #print dataset type
     print ('Dataset: {}'.format(datasetname))
-        
+
+    #filepath=./Data/citeseer
+    #Suggestion: filepath=os.path.join(mainpath,datasetname)
     filepath = mainpath+'/citeseer/'
+
     structfile = 'struct.csv'
     contfile='content.csv'
     fileLabels = 'label.csv'
-        
+
+    #read structure file
     A = pd.read_csv(filepath+structfile, header=None)
     A = A.as_matrix(columns=None)
-    
+
+    #read content file
     C = pd.read_csv(filepath+contfile, header=None)
     C = C.as_matrix(columns=None)
-    
+
+    #read label file
     true_labels = pd.read_csv(filepath+fileLabels, header=None)
     true_labels = true_labels[0].tolist()
-    
+
+    #count labels. Delete duplicate label
+    #For example,
+    #true_labels=[1,2,4,1,2,1,3]
+    #set(true_labels)=[1,2,3,4]
+    #NonComm=len(set(true_labels)=4
     NoComm = len(set(true_labels))
-    
+
+    #Be sure that A.shape[0]==C.shape[0] & A.shape[0]==len(true_labels)
     assert(A.shape[0] == C.shape[0] & A.shape[0] == len(true_labels))
 
-
+    #k_iter count
     for k_iter in [2,3,4,5,6]:
         K = k_iter*NoComm
-        
+
+
         result_dir = result_dir_original + 'k=' + str(k_iter) + '/'
         sys.stdout.flush()
         sys.stdout = open(result_dir + 'results.txt', "a")
         
         print("Number of Dimensions : ", K)
+        #create a KXK array which one is on diagonal line and others are all zeros
+        #When K=2
+        #[1,0]
+        #[0,1]
+        #When k=3
+        #[1,0,0]
+        #[0,1,0]
+        #[0,0,1]
         W = np.eye(K)
         
         print ('Dimension of C: {}, {}'.format(C.shape[0], C.shape[1]))
+
+        #gc.collect()
+        #Run garbage collector. nothing else
         gc.collect()
+
         opti_values=[]
         runtime=[]
         mu = 1
         gc.collect()
         start_time = time.time()
-                
+
+        r"""Non-Negative Matrix Factorization (NMF)
+
+            Find two non-negative matrices (W, H) whose product approximates the non-
+            negative matrix X. This factorization can be used for example for
+            dimensionality reduction, source separation or topic extraction."""
         model = NMF(n_components=K, init='random', random_state=0)
         G = model.fit_transform(A)
         H = model.components_
@@ -105,12 +142,17 @@ for datasetname in DSNames:
         model = NMF(n_components=K, init='random', random_state=0)
         U = model.fit_transform(C)
         V = model.components_
-        
+
+        #A matrix with only 1 has the same dimension of A
         outl1 = np.ones((A.shape[0]))
         outl2 = np.ones((A.shape[0]))
         outl3 = np.ones((A.shape[0]))
+
+        #Convert matrix A to Graph
         Graph=nx.from_numpy_matrix(A)
+        #Betweenness centrality of a node v is the sum of the fraction of all-pairs shortest paths that pass through v
         bet = nx.betweenness_centrality(Graph)
+
         for i in range(len(outl1)):
             outl1[i] = float(1)/A.shape[0] + bet[i]
             outl2[i] = float(1)/A.shape[0]
@@ -121,8 +163,11 @@ for datasetname in DSNames:
         outl3 = outl3/sum(outl3)
         
         count_outer = 5 # Number of outer Iterations for optimization
-        
+
+        #A-matrxi product(G,H)
         temp1 = A - np.matmul(G,H)
+
+        #element product
         temp1 = np.multiply(temp1,temp1)
         temp1 = np.multiply( np.log(np.reciprocal(outl1)), np.sum(temp1, axis=1) )
         temp1 = np.sum(temp1)
